@@ -128,4 +128,64 @@ class CycloneDXVexImporterTest extends PersistenceCapableTest {
         });
     }
 
+    @Test
+    void shouldApplyOwaspRatingsFromVex() throws URISyntaxException, IOException, ParseException {
+        // Arrange
+        var project = qm.createProject("Acme Application", null, "2.0", null, null, null, true, false);
+
+        var component = new Component();
+        component.setProject(project);
+        component.setName("Acme Component");
+        component.setVersion("2.0");
+        component = qm.createComponent(component, false);
+
+        // Create vulnerabilities that will receive OWASP ratings
+        var vuln1 = new Vulnerability();
+        vuln1.setVulnId("CVE-2024-12345");
+        vuln1.setSource(Vulnerability.Source.NVD);
+        vuln1.setSeverity(Severity.HIGH);
+        vuln1.setComponents(List.of(component));
+        vuln1 = qm.createVulnerability(vuln1, false);
+        qm.addVulnerability(vuln1, component, AnalyzerIdentity.NONE);
+
+        var vuln2 = new Vulnerability();
+        vuln2.setVulnId("CVE-2024-54321");
+        vuln2.setSource(Vulnerability.Source.NVD);
+        vuln2.setSeverity(Severity.CRITICAL);
+        vuln2.setComponents(List.of(component));
+        vuln2 = qm.createVulnerability(vuln2, false);
+        qm.addVulnerability(vuln2, component, AnalyzerIdentity.NONE);
+
+        // Load VEX with OWASP ratings
+        final byte[] vexBytes = Files.readAllBytes(Paths.get(getClass().getClassLoader().getResource("vex-with-owasp-ratings.json").toURI()));
+        var parser = BomParserFactory.createParser(vexBytes);
+        var vex = parser.parse(vexBytes);
+
+        qm.getPersistenceManager().refreshAll();
+
+        // Act
+        vexImporter.applyVex(qm, vex, project);
+        qm.getPersistenceManager().refreshAll();
+
+        // Assert
+        var refreshedVuln1 = qm.getVulnerabilityByVulnId(Vulnerability.Source.NVD.name(), "CVE-2024-12345");
+        Assertions.assertThat(refreshedVuln1).isNotNull();
+        Assertions.assertThat(refreshedVuln1.getOwaspRRVector()).isNotNull();
+        Assertions.assertThat(refreshedVuln1.getOwaspRRVector()).isEqualTo("SL:1/M:1/O:0/S:2/ED:1/EE:1/A:1/ID:1/LC:2/LI:1/LAV:1/LAC:1/FD:1/RD:1/NC:2/PV:2");
+        Assertions.assertThat(refreshedVuln1.getOwaspRRLikelihoodScore()).isNotNull();
+        Assertions.assertThat(refreshedVuln1.getOwaspRRTechnicalImpactScore()).isNotNull();
+        Assertions.assertThat(refreshedVuln1.getOwaspRRBusinessImpactScore()).isNotNull();
+
+        var refreshedVuln2 = qm.getVulnerabilityByVulnId(Vulnerability.Source.NVD.name(), "CVE-2024-54321");
+        Assertions.assertThat(refreshedVuln2).isNotNull();
+        Assertions.assertThat(refreshedVuln2.getOwaspRRVector()).isNotNull();
+        Assertions.assertThat(refreshedVuln2.getOwaspRRVector()).isEqualTo("SL:5/M:5/O:5/S:9/ED:3/EE:3/A:9/ID:9/LC:9/LI:9/LAV:9/LAC:9/FD:9/RD:9/NC:7/PV:9");
+        Assertions.assertThat(refreshedVuln2.getOwaspRRLikelihoodScore()).isNotNull();
+        Assertions.assertThat(refreshedVuln2.getOwaspRRTechnicalImpactScore()).isNotNull();
+        Assertions.assertThat(refreshedVuln2.getOwaspRRBusinessImpactScore()).isNotNull();
+        // Verify that scores are higher for the critical vulnerability
+        Assertions.assertThat(refreshedVuln2.getOwaspRRLikelihoodScore())
+                .isGreaterThan(refreshedVuln1.getOwaspRRLikelihoodScore());
+    }
+
 }

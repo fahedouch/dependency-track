@@ -170,5 +170,10 @@ public class CycloneDXVexImporter {
             }
         }
         qm.makeAnalysis(component, refreshedVuln, analysisState, analysisJustification, analysisResponse, analysisDetails, suppress);
+
+        // Process OWASP Risk Rating from VEX ratings
+        if (cdxVuln.getRatings() != null && !cdxVuln.getRatings().isEmpty()) {
+            ModelConverter.applyOwaspRatingFromCdxRatings(refreshedVuln, cdxVuln.getRatings());
+        }
     }
 }
