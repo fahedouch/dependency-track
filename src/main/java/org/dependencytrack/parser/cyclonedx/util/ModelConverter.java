@@ -1187,5 +1187,48 @@ public class ModelConverter {
                 return AnalysisJustification.NOT_SET;
         }
     }
+
+    /**
+     * Applies OWASP Risk Rating from CycloneDX vulnerability ratings to a Dependency-Track vulnerability.
+     * This method searches for an OWASP rating in the provided ratings list and applies it to the vulnerability.
+     *
+     * @param vulnerability the Dependency-Track vulnerability to update
+     * @param ratings the list of CycloneDX ratings from the VEX document
+     */
+    public static void applyOwaspRatingFromCdxRatings(final Vulnerability vulnerability,
+                                                       final List<org.cyclonedx.model.vulnerability.Vulnerability.Rating> ratings) {
+        if (ratings == null || ratings.isEmpty()) {
+            return;
+        }
+
+        // Find the OWASP rating
+        final org.cyclonedx.model.vulnerability.Vulnerability.Rating owaspRating = ratings.stream()
+                .filter(rating -> rating.getMethod() == org.cyclonedx.model.vulnerability.Vulnerability.Rating.Method.OWASP)
+                .findFirst()
+                .orElse(null);
+
+        if (owaspRating == null || owaspRating.getVector() == null) {
+            return;
+        }
+
+        try {
+            // Parse the OWASP RR vector and extract scores
+            final us.springett.owasp.riskrating.OwaspRiskRating rr =
+                    us.springett.owasp.riskrating.OwaspRiskRating.fromVector(owaspRating.getVector());
+            final us.springett.owasp.riskrating.Score score = rr.calculateScore();
+
+            // Set the OWASP RR scores on the vulnerability
+            vulnerability.setOwaspRRVector(owaspRating.getVector());
+            vulnerability.setOwaspRRLikelihoodScore(java.math.BigDecimal.valueOf(score.getLikelihoodScore()));
+            vulnerability.setOwaspRRTechnicalImpactScore(java.math.BigDecimal.valueOf(score.getTechnicalImpactScore()));
+            vulnerability.setOwaspRRBusinessImpactScore(java.math.BigDecimal.valueOf(score.getBusinessImpactScore()));
+
+            LOGGER.debug("Applied OWASP Risk Rating from VEX: vector=%s, likelihood=%.1f, technical=%.1f, business=%.1f"
+                    .formatted(owaspRating.getVector(), score.getLikelihoodScore(),
+                            score.getTechnicalImpactScore(), score.getBusinessImpactScore()));
+        } catch (IllegalArgumentException | us.springett.owasp.riskrating.MissingFactorException e) {
+            LOGGER.warn("Failed to parse OWASP RR vector from VEX: %s - %s".formatted(owaspRating.getVector(), e.getMessage()));
+        }
+    }
     
 }
