@@ -1202,13 +1202,10 @@ public class ModelConverter {
         }
 
         // Find the OWASP rating
-        org.cyclonedx.model.vulnerability.Vulnerability.Rating owaspRating = null;
-        for (org.cyclonedx.model.vulnerability.Vulnerability.Rating rating : ratings) {
-            if (rating.getMethod() == org.cyclonedx.model.vulnerability.Vulnerability.Rating.Method.OWASP) {
-                owaspRating = rating;
-                break;
-            }
-        }
+        final org.cyclonedx.model.vulnerability.Vulnerability.Rating owaspRating = ratings.stream()
+                .filter(rating -> rating.getMethod() == org.cyclonedx.model.vulnerability.Vulnerability.Rating.Method.OWASP)
+                .findFirst()
+                .orElse(null);
 
         if (owaspRating == null || owaspRating.getVector() == null) {
             return;
@@ -1226,7 +1223,7 @@ public class ModelConverter {
             vulnerability.setOwaspRRTechnicalImpactScore(java.math.BigDecimal.valueOf(score.getTechnicalImpactScore()));
             vulnerability.setOwaspRRBusinessImpactScore(java.math.BigDecimal.valueOf(score.getBusinessImpactScore()));
 
-            LOGGER.info("Applied OWASP Risk Rating from VEX: vector=%s, likelihood=%.1f, technical=%.1f, business=%.1f"
+            LOGGER.debug("Applied OWASP Risk Rating from VEX: vector=%s, likelihood=%.1f, technical=%.1f, business=%.1f"
                     .formatted(owaspRating.getVector(), score.getLikelihoodScore(),
                             score.getTechnicalImpactScore(), score.getBusinessImpactScore()));
         } catch (IllegalArgumentException | us.springett.owasp.riskrating.MissingFactorException e) {
