@@ -25,9 +25,9 @@ ARG UID=1000
 ARG GID=1000
 ARG WAR_FILENAME=dependency-track-apiserver.jar
 
-FROM eclipse-temurin:25.0.1_8-jre-jammy@sha256:1cccec6c2fa4f755ebf95c5822e3e21cf1045671af976c412fa291e69e127ab7 AS jre-build
+FROM eclipse-temurin:25.0.2_10-jre-jammy@sha256:d36843a6f1af5d0aca01ef3d926e2220444eb19fe38e1b23cef3d663ef29b306 AS jre-build
 
-FROM debian:stable-slim@sha256:ed542b2d269ff08139fc5ab8c762efe8c8986b564a423d5241a5ce9fb09b6c08
+FROM debian:stable-slim@sha256:8f0c555de6a2f9c2bda1b170b67479d11f7f5e3b66bb4a7a1d8843361c9dd3ff
 
 ARG COMMIT_SHA
 ARG APP_VERSION
@@ -41,7 +41,7 @@ ENV TZ=Etc/UTC \
     # Dependency-Track's default logging level
     LOGGING_LEVEL=INFO \
     # JVM Options that are passed at runtime by default
-    JAVA_OPTIONS="-XX:+UseParallelGC -XX:+UseStringDeduplication -XX:+UseCompactObjectHeaders -XX:MaxRAMPercentage=90.0" \
+    JAVA_OPTIONS="-XX:+UseG1GC -XX:+UseStringDeduplication -XX:+UseCompactObjectHeaders -XX:MaxRAMPercentage=80.0 -XX:MaxGCPauseMillis=250" \
     # JVM Options that can be passed at runtime, while maintaining also those set in JAVA_OPTIONS
     EXTRA_JAVA_OPTIONS="" \
     # The web context defaults to the root. To override, supply an alternative context which starts with a / but does not end with one
@@ -71,7 +71,7 @@ RUN mkdir -p ${APP_DIR} ${DATA_DIR} \
     \
     # Install curl for health check
     && apt-get -yqq update \
-    && DEBIAN_FRONTEND=noninteractive apt-get install -yqq --no-install-recommends curl \
+    && DEBIAN_FRONTEND=noninteractive apt-get install -yqq --no-install-recommends curl tini \
     && rm -rf /var/lib/apt/lists/*
 
 USER ${UID}
@@ -79,6 +79,8 @@ WORKDIR ${APP_DIR}
 
 COPY --from=jre-build --chown=${UID}:0 /opt/java/openjdk $JAVA_HOME
 COPY --chown=${UID}:0 ./target/${WAR_FILENAME} ./src/main/docker/logback-json.xml ./
+
+ENTRYPOINT ["/usr/bin/tini", "--"]
 
 # Launch Dependency-Track
 CMD [ \
@@ -97,7 +99,7 @@ CMD [ \
 EXPOSE 8080
 
 # Add a healthcheck using the Dependency-Track version API
-HEALTHCHECK --interval=30s --start-period=60s --timeout=3s CMD [ \
+HEALTHCHECK --interval=30s --start-period=60s --timeout=5s CMD [ \
     "/bin/sh", "-c", \
     "curl -f -s --max-time 3 --noproxy '*' -o /dev/null http://127.0.0.1:8080${CONTEXT}health" \
 ]
